@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Meteo Multi-Modello - Verifica Oggi</title>
+  <title>Meteo Multi-Modello - Oggi e Domani</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -25,12 +25,19 @@
     .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     input[type="text"] {
       background: var(--card); color: var(--text); border: 1px solid var(--border);
-      padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; width: 180px; outline: none;
+      padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; width: 165px; outline: none;
     }
     input[type="text"]:focus { border-color: #3b82f6; }
     button {
-      background: #2563eb; color: white; border: none; padding: 10px 16px;
-      border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem;
+      background: #2563eb; color: white; border: none; padding: 10px 14px;
+      border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.88rem;
+    }
+    button.btn-secondary {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+    }
+    button.btn-secondary:hover { border-color: #3b82f6; }
+    button.btn-active {
+      background: #0284c7; border: 1px solid #38bdf8; color: white;
     }
     button:active { transform: scale(0.98); }
     button:disabled { opacity: 0.6; cursor: wait; }
@@ -67,12 +74,13 @@
 
   <header>
     <div class="title-area">
-      <h1 id="cityTitle">Meteo Crema (CR) - Oggi</h1>
+      <h1 id="cityTitle">Meteo Crema - Oggi</h1>
       <div class="sub" id="lastUpdate">In attesa di aggiornamento...</div>
     </div>
     <div class="controls">
-      <input type="text" id="cityInput" value="Crema" placeholder="Inserisci città..." onkeydown="if(event.key==='Enter') searchAndFetch()">
-      <button id="refreshBtn" onclick="searchAndFetch()">Aggiorna</button>
+      <input type="text" id="cityInput" value="Crema" placeholder="Inserisci città..." onkeydown="if(event.key==='Enter') searchAndFetch(selectedDay)">
+      <button id="refreshBtn" onclick="searchAndFetch(0)">Oggi (Aggiorna)</button>
+      <button id="tomorrowBtn" class="btn-secondary" onclick="searchAndFetch(1)">Controlla per domani</button>
     </div>
   </header>
 
@@ -108,17 +116,38 @@
       lon: 9.687
     };
 
+    var selectedDay = 0; // 0 = Oggi, 1 = Domani
+
     function padZero(num) {
       return num < 10 ? '0' + num : '' + num;
     }
 
-    async function searchAndFetch() {
-      var btn = document.getElementById('refreshBtn');
+    function updateButtonsState(loading) {
+      var btnToday = document.getElementById('refreshBtn');
+      var btnTomorrow = document.getElementById('tomorrowBtn');
+      btnToday.disabled = loading;
+      btnTomorrow.disabled = loading;
+
+      if (loading) {
+        if (selectedDay === 0) btnToday.textContent = 'Aggiorno...';
+        else btnTomorrow.textContent = 'Carico domani...';
+      } else {
+        btnToday.textContent = selectedDay === 0 ? 'Aggiorna oggi' : 'Torna a oggi';
+        btnTomorrow.textContent = selectedDay === 1 ? 'Aggiorna domani' : 'Controlla per domani';
+        btnToday.className = selectedDay === 0 ? '' : 'btn-secondary';
+        btnTomorrow.className = selectedDay === 1 ? 'btn-active' : 'btn-secondary';
+      }
+    }
+
+    async function searchAndFetch(dayOffset) {
+      if (typeof dayOffset === 'number') {
+        selectedDay = dayOffset;
+      }
+
       var query = document.getElementById('cityInput').value.trim();
       if (!query) return;
 
-      btn.disabled = true;
-      btn.textContent = 'Cerco...';
+      updateButtonsState(true);
 
       try {
         if (query.toLowerCase() !== currentLoc.name.toLowerCase()) {
@@ -145,9 +174,8 @@
           };
         }
 
-        btn.textContent = 'Aggiorno...';
         var modelIds = MODELS.map(function(m) { return m.id; }).join(',');
-        var weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + currentLoc.lat + '&longitude=' + currentLoc.lon + '&hourly=precipitation,rain,snowfall,precipitation_probability,wind_speed_10m,wind_gusts_10m&models=' + modelIds + '&forecast_days=1&timezone=Europe%2FRome';
+        var weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + currentLoc.lat + '&longitude=' + currentLoc.lon + '&hourly=precipitation,rain,snowfall,precipitation_probability,wind_speed_10m,wind_gusts_10m&models=' + modelIds + '&forecast_days=2&timezone=Europe%2FRome';
 
         var res = await fetch(weatherUrl);
         if (!res.ok) throw new Error('Errore risposta API meteo (' + res.status + ')');
@@ -157,19 +185,25 @@
         document.getElementById('verdictBox').className = 'verdict warn';
         document.getElementById('verdictBox').textContent = 'Attenzione: ' + err.message;
       } finally {
-        btn.disabled = false;
-        btn.textContent = 'Aggiorna';
+        updateButtonsState(false);
       }
     }
 
     function render(data) {
       var now = new Date();
       var currentHour = now.getHours();
-      var timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      var dateStr = now.toLocaleDateString('it-IT');
+      var targetDate = new Date(now);
+      targetDate.setDate(now.getDate() + selectedDay);
 
-      document.getElementById('cityTitle').textContent = 'Meteo ' + currentLoc.name + ' - Oggi';
-      document.getElementById('lastUpdate').textContent = currentLoc.detail + ' | Aggiornato alle ' + timeStr + ' (' + dateStr + ')';
+      var dayLabel = selectedDay === 0 ? 'Oggi' : 'Domani';
+      var targetDateStr = targetDate.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' });
+      var timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      document.getElementById('cityTitle').textContent = 'Meteo ' + currentLoc.name + ' - ' + dayLabel + ' (' + targetDateStr + ')';
+      document.getElementById('lastUpdate').textContent = currentLoc.detail + ' | Aggiornato alle ' + timeStr;
+
+      var startIdx = selectedDay * 24;
+      var endIdx = startIdx + 24;
 
       var wetModelsCount = 0;
       var snowDetected = false;
@@ -191,7 +225,8 @@
         var maxGust = 0;
         var wetHours = [];
 
-        for (var i = 0; i < 24; i++) {
+        for (var i = startIdx; i < endIdx; i++) {
+          var hourOfDay = i - startIdx;
           var p = precip[i] || 0;
           var s = snow[i] || 0;
           var pr = prob[i] || 0;
@@ -204,7 +239,7 @@
           if (w > maxWind) maxWind = w;
           if (g > maxGust) maxGust = g;
           if (p >= 0.1 || s >= 0.1) {
-            wetHours.push(padZero(i) + ':00');
+            wetHours.push(padZero(hourOfDay) + ':00');
           }
         }
 
@@ -245,24 +280,29 @@
       });
 
       var verdictBox = document.getElementById('verdictBox');
-      var windSummary = ' | Vento max oggi: ~' + Math.round(maxWindOverall) + ' km/h';
+      var verdictPrefix = 'VERDETTO ' + dayLabel.toUpperCase() + ': ';
+      var windSummary = ' | Vento max: ~' + Math.round(maxWindOverall) + ' km/h';
 
       if (wetModelsCount === 0) {
         verdictBox.className = 'verdict dry';
-        verdictBox.textContent = 'VERDETTO OGGI: Asciutto su tutti e 4 i modelli (0/4)' + windSummary;
+        verdictBox.textContent = verdictPrefix + 'Asciutto su tutti e 4 i modelli (0/4)' + windSummary;
       } else if (wetModelsCount <= 2) {
         verdictBox.className = 'verdict warn';
-        verdictBox.textContent = 'VERDETTO OGGI: Incerto - ' + wetModelsCount + '/4 modelli prevedono ' + (snowDetected ? 'neve/pioggia' : 'pioggia') + windSummary;
+        verdictBox.textContent = verdictPrefix + 'Incerto - ' + wetModelsCount + '/4 modelli prevedono ' + (snowDetected ? 'neve/pioggia' : 'pioggia') + windSummary;
       } else {
         verdictBox.className = 'verdict wet';
-        verdictBox.textContent = 'VERDETTO OGGI: ' + (snowDetected ? 'Neve/Pioggia' : 'Pioggia') + ' confermata (' + wetModelsCount + '/4 modelli)' + windSummary;
+        verdictBox.textContent = verdictPrefix + (snowDetected ? 'Neve/Pioggia' : 'Pioggia') + ' confermata (' + wetModelsCount + '/4 modelli)' + windSummary;
       }
 
       var tbody = document.getElementById('hourlyBody');
       tbody.innerHTML = '';
-      for (var i = 0; i < 24; i++) {
-        var rowClass = i < currentHour ? 'past' : (i === currentHour ? 'now' : '');
-        var cells = '<td>' + padZero(i) + ':00</td>';
+      for (var i = startIdx; i < endIdx; i++) {
+        var hourOfDay = i - startIdx;
+        var rowClass = '';
+        if (selectedDay === 0) {
+          rowClass = hourOfDay < currentHour ? 'past' : (hourOfDay === currentHour ? 'now' : '');
+        }
+        var cells = '<td>' + padZero(hourOfDay) + ':00</td>';
 
         MODELS.forEach(function(model) {
           var p = (data.hourly['precipitation_' + model.id] || [])[i] || 0;
@@ -288,7 +328,7 @@
       }
     }
 
-    searchAndFetch();
+    searchAndFetch(0);
   </script>
 </body>
 </html>
