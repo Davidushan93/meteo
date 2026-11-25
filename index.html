@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meteo Crema - Verifica Pioggia/Neve Oggi</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --dry: #10b981;
+      --warn: #f59e0b;
+      --wet: #3b82f6;
+      --snow: #e2e8f0;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; max-width: 800px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 10px; }
+    h1 { font-size: 1.25rem; }
+    .sub { font-size: 0.85rem; color: var(--muted); }
+    button {
+      background: #2563eb; color: white; border: none; padding: 10px 16px;
+      border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem;
+    }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .verdict {
+      padding: 16px; border-radius: 12px; margin-bottom: 16px;
+      font-weight: 700; font-size: 1.1rem; border: 1px solid var(--border);
+    }
+    .verdict.dry { background: rgba(16, 185, 129, 0.15); border-color: var(--dry); color: #6ee7b7; }
+    .verdict.warn { background: rgba(245, 158, 11, 0.15); border-color: var(--warn); color: #fcd34d; }
+    .verdict.wet { background: rgba(59, 130, 246, 0.2); border-color: var(--wet); color: #93c5fd; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+    }
+    .card h2 { font-size: 0.95rem; margin-bottom: 4px; color: var(--muted); }
+    .status { font-size: 1.1rem; font-weight: 700; margin: 6px 0; }
+    .status.dry { color: var(--dry); }
+    .status.wet { color: #60a5fa; }
+    .status.snow { color: var(--snow); }
+    .details { font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 10px; overflow: hidden; font-size: 0.85rem; }
+    th, td { padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--border); }
+    th { background: #0b1120; color: var(--muted); font-weight: 600; }
+    tr.past { opacity: 0.45; }
+    tr.now { background: rgba(37, 99, 235, 0.2); font-weight: 700; }
+    .pill-wet { background: rgba(59, 130, 246, 0.25); color: #93c5fd; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+    .pill-snow { background: rgba(226, 232, 240, 0.25); color: #fff; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>Meteo Crema (CR) — Oggi</h1>
+      <div class="sub" id="lastUpdate">In attesa di aggiornamento...</div>
+    </div>
+    <button id="refreshBtn" onclick="fetchWeather()">Aggiorna ora</button>
+  </header>
+
+  <div id="verdictBox" class="verdict">Caricamento modelli meteo in corso...</div>
+
+  <div class="grid" id="modelsGrid"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Ora</th>
+        <th>ECMWF</th>
+        <th>ICON-D2</th>
+        <th>GFS</th>
+        <th>AROME</th>
+      </tr>
+    </thead>
+    <tbody id="hourlyBody"></tbody>
+  </table>
+
+  <script>
+    const MODELS = [
+      { id: 'ecmwf_ifs025', name: 'ECMWF (Europeo)' },
+      { id: 'icon_d2', name: 'ICON-D2 (Tedesco)' },
+      { id: 'gfs_global', name: 'GFS (Americano)' },
+      { id: 'meteofrance_arome_france_hd', name: 'AROME (MeteoFrance)' }
+    ];
+
+    async function fetchWeather() {
+      const btn = document.getElementById('refreshBtn');
+      btn.disabled = true;
+      btn.textContent = 'Aggiorno...';
+
+      const url = https://api.open-meteo.com/v1/forecast?latitude=45.363&longitude=9.687&hourly=precipitation,rain,snowfall,precipitation_probability&models=${MODELS.map(m => m.id).join(',')}&forecast_days=1&timezone=Europe%2FRome;
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Errore risposta API');
+        const data = await res.json();
+        render(data);
+      } catch (err) {
+        document.getElementById('verdictBox').className = 'verdict warn';
+        document.getElementById('verdictBox').textContent = 'Errore nel recupero dati: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Aggiorna ora';
+      }
+    }
+
+    function render(data) {
+      const now = new Date();
+      const currentHour = now.getHours();
+      document.getElementById('lastUpdate').textContent =
+        Aggiornato alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} (${now.toLocaleDateString('it-IT')});
+
+      const times = data.hourly.time;
+      let wetModelsCount = 0;
+      let snowDetected = false;
+      const grid = document.getElementById('modelsGrid');
+      grid.innerHTML = '';
+
+      MODELS.forEach(model => {
+        const precip = data.hourly[precipitation_${model.id}] || [];
+        const snow = data.hourly[snowfall_${model.id}] || [];
+        const prob = data.hourly[precipitation_probability_${model.id}] || [];
+
+        let totalMm = 0;
+        let totalSnowCm = 0;
+        let maxProb = 0;
+        let wetHours = [];
+
+        for (let i = 0; i < 24; i++) {
+          const p = precip[i] || 0;
+          const s = snow[i] || 0;
+          const pr = prob[i] || 0;
+          totalMm += p;
+          totalSnowCm += s;
+          if (pr > maxProb) maxProb = pr;
+          if (p >= 0.1 || s >= 0.1) {
+            wetHours.push(${String(i).padStart(2, '0')}:00);
+          }
+        }
+
+        const hasSnow = totalSnowCm >= 0.1;
+        const hasRain = totalMm >= 0.1;
+        if (hasRain || hasSnow) wetModelsCount++;
+        if (hasSnow) snowDetected = true;
+
+        let statusText = 'Asciutto';
+        let statusClass = 'dry';
+        if (hasSnow) { statusText = Neve (${totalSnowCm.toFixed(1)} cm); statusClass = 'snow'; }
+        else if (hasRain) { statusText = Pioggia (${totalMm.toFixed(1)} mm); statusClass = 'wet'; }
+
+        const hoursInfo = wetHours.length > 0
+          ? Ore: ${wetHours[0]} – ${wetHours[wetHours.length - 1]} (${wetHours.length}h)
+          : 'Nessuna precipitazione';
+
+        grid.innerHTML += `
+          <div class="card">
+            <h2>${model.name}</h2>
+            <div class="status ${statusClass}">${statusText}</div>
+            <div class="details">
+              Prob. max: ${maxProb > 0 ? maxProb + '%' : 'N/D'}<br>
+              ${hoursInfo}
+            </div>
+          </div>
+        `;
+      });
+
+      const verdictBox = document.getElementById('verdictBox');
+      if (wetModelsCount === 0) {
+        verdictBox.className = 'verdict dry';
+        verdictBox.textContent = 'VERDETTO OGGI: Asciutto su tutti e 4 i modelli (0/4).';
+      } else if (wetModelsCount <= 2) {
+        verdictBox.className = 'verdict warn';
+        verdictBox.textContent = VERDETTO OGGI: Incerto — ${wetModelsCount} modelli su 4 prevedono ${snowDetected ? 'neve/pioggia' : 'pioggia'}.;
+      } else {
+        verdictBox.className = 'verdict wet';
+        verdictBox.textContent = VERDETTO OGGI: ${snowDetected ? 'Neve/Pioggia' : 'Pioggia'} confermata (${wetModelsCount}/4 modelli).;
+      }
+
+      const tbody = document.getElementById('hourlyBody');
+      tbody.innerHTML = '';
+      for (let i = 0; i < 24; i++) {
+        const rowClass = i < currentHour ? 'past' : (i === currentHour ? 'now' : '');
+        let cells = <td>${String(i).padStart(2, '0')}:00</td>;
+
+        MODELS.forEach(model => {
+          const p = (data.hourly[precipitation_${model.id}] || [])[i] || 0;
+          const s = (data.hourly[snowfall_${model.id}] || [])[i] || 0;
+          if (s >= 0.1) {
+            cells += <td><span class="pill-snow">❄️ ${s.toFixed(1)}cm</span></td>;
+          } else if (p >= 0.1) {
+            cells += <td><span class="pill-wet">💧 ${p.toFixed(1)}mm</span></td>;
+          } else {
+            cells += <td>—</td>;
+          }
+        });
+
+        tbody.innerHTML += <tr class="${rowClass}">${cells}</tr>;
+      }
+    }
+
+    fetchWeather();
+  </script>
+</body>
+</html>
