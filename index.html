@@ -197,4 +197,21 @@
 
         MODELS.forEach(function(model) {
           var p = (data.hourly['precipitation_' + model.id] || [])[i] || 0;
-          var s = (data.hourly['snowfall_' + model.id] || [])[i] || 0
+          var s = (data.hourly['snowfall_' + model.id] || [])[i] || 0;
+          if (s >= 0.1) {
+            cells += '<td><span class="pill-snow">Neve ' + s.toFixed(1) + 'cm</span></td>';
+          } else if (p >= 0.1) {
+            cells += '<td><span class="pill-wet">Pioggia ' + p.toFixed(1) + 'mm</span></td>';
+          } else {
+            cells += '<td>-</td>';
+          }
+        });
+
+        tbody.innerHTML += '<tr class="' + rowClass + '">' + cells + '</tr>';
+      }
+    }
+
+    fetchWeather();
+  </script>
+</body>
+</html>
