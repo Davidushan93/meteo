@@ -57,7 +57,7 @@
 
   <header>
     <div>
-      <h1>Meteo Crema (CR) — Oggi</h1>
+      <h1>Meteo Crema (CR) - Oggi</h1>
       <div class="sub" id="lastUpdate">In attesa di aggiornamento...</div>
     </div>
     <button id="refreshBtn" onclick="fetchWeather()">Aggiorna ora</button>
@@ -81,24 +81,29 @@
   </table>
 
   <script>
-    const MODELS = [
+    var MODELS = [
       { id: 'ecmwf_ifs025', name: 'ECMWF (Europeo)' },
       { id: 'icon_d2', name: 'ICON-D2 (Tedesco)' },
       { id: 'gfs_global', name: 'GFS (Americano)' },
       { id: 'meteofrance_arome_france_hd', name: 'AROME (MeteoFrance)' }
     ];
 
+    function padZero(num) {
+      return num < 10 ? '0' + num : '' + num;
+    }
+
     async function fetchWeather() {
-      const btn = document.getElementById('refreshBtn');
+      var btn = document.getElementById('refreshBtn');
       btn.disabled = true;
       btn.textContent = 'Aggiorno...';
 
-      const url = https://api.open-meteo.com/v1/forecast?latitude=45.363&longitude=9.687&hourly=precipitation,rain,snowfall,precipitation_probability&models=${MODELS.map(m => m.id).join(',')}&forecast_days=1&timezone=Europe%2FRome;
+      var modelIds = MODELS.map(function(m) { return m.id; }).join(',');
+      var url = 'https://api.open-meteo.com/v1/forecast?latitude=45.363&longitude=9.687&hourly=precipitation,rain,snowfall,precipitation_probability&models=' + modelIds + '&forecast_days=1&timezone=Europe%2FRome';
 
       try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Errore risposta API');
-        const data = await res.json();
+        var res = await fetch(url);
+        if (!res.ok) throw new Error('Errore risposta API (' + res.status + ')');
+        var data = await res.json();
         render(data);
       } catch (err) {
         document.getElementById('verdictBox').className = 'verdict warn';
@@ -110,100 +115,86 @@
     }
 
     function render(data) {
-      const now = new Date();
-      const currentHour = now.getHours();
-      document.getElementById('lastUpdate').textContent =
-        Aggiornato alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} (${now.toLocaleDateString('it-IT')});
+      var now = new Date();
+      var currentHour = now.getHours();
+      var timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      var dateStr = now.toLocaleDateString('it-IT');
+      document.getElementById('lastUpdate').textContent = 'Aggiornato alle ' + timeStr + ' (' + dateStr + ')';
 
-      const times = data.hourly.time;
-      let wetModelsCount = 0;
-      let snowDetected = false;
-      const grid = document.getElementById('modelsGrid');
+      var wetModelsCount = 0;
+      var snowDetected = false;
+      var grid = document.getElementById('modelsGrid');
       grid.innerHTML = '';
 
-      MODELS.forEach(model => {
-        const precip = data.hourly[precipitation_${model.id}] || [];
-        const snow = data.hourly[snowfall_${model.id}] || [];
-        const prob = data.hourly[precipitation_probability_${model.id}] || [];
+      MODELS.forEach(function(model) {
+        var precip = data.hourly['precipitation_' + model.id] || [];
+        var snow = data.hourly['snowfall_' + model.id] || [];
+        var prob = data.hourly['precipitation_probability_' + model.id] || [];
 
-        let totalMm = 0;
-        let totalSnowCm = 0;
-        let maxProb = 0;
-        let wetHours = [];
+        var totalMm = 0;
+        var totalSnowCm = 0;
+        var maxProb = 0;
+        var wetHours = [];
 
-        for (let i = 0; i < 24; i++) {
-          const p = precip[i] || 0;
-          const s = snow[i] || 0;
-          const pr = prob[i] || 0;
+        for (var i = 0; i < 24; i++) {
+          var p = precip[i] || 0;
+          var s = snow[i] || 0;
+          var pr = prob[i] || 0;
           totalMm += p;
           totalSnowCm += s;
           if (pr > maxProb) maxProb = pr;
           if (p >= 0.1 || s >= 0.1) {
-            wetHours.push(${String(i).padStart(2, '0')}:00);
+            wetHours.push(padZero(i) + ':00');
           }
         }
 
-        const hasSnow = totalSnowCm >= 0.1;
-        const hasRain = totalMm >= 0.1;
+        var hasSnow = totalSnowCm >= 0.1;
+        var hasRain = totalMm >= 0.1;
         if (hasRain || hasSnow) wetModelsCount++;
         if (hasSnow) snowDetected = true;
 
-        let statusText = 'Asciutto';
-        let statusClass = 'dry';
-        if (hasSnow) { statusText = Neve (${totalSnowCm.toFixed(1)} cm); statusClass = 'snow'; }
-        else if (hasRain) { statusText = Pioggia (${totalMm.toFixed(1)} mm); statusClass = 'wet'; }
+        var statusText = 'Asciutto';
+        var statusClass = 'dry';
+        if (hasSnow) {
+          statusText = 'Neve (' + totalSnowCm.toFixed(1) + ' cm)';
+          statusClass = 'snow';
+        } else if (hasRain) {
+          statusText = 'Pioggia (' + totalMm.toFixed(1) + ' mm)';
+          statusClass = 'wet';
+        }
 
-        const hoursInfo = wetHours.length > 0
-          ? Ore: ${wetHours[0]} – ${wetHours[wetHours.length - 1]} (${wetHours.length}h)
+        var hoursInfo = wetHours.length > 0
+          ? 'Ore: ' + wetHours[0] + ' - ' + wetHours[wetHours.length - 1] + ' (' + wetHours.length + 'h)'
           : 'Nessuna precipitazione';
 
-        grid.innerHTML += `
-          <div class="card">
-            <h2>${model.name}</h2>
-            <div class="status ${statusClass}">${statusText}</div>
-            <div class="details">
-              Prob. max: ${maxProb > 0 ? maxProb + '%' : 'N/D'}<br>
-              ${hoursInfo}
-            </div>
-          </div>
-        `;
+        var probText = maxProb > 0 ? maxProb + '%' : 'N/D';
+
+        grid.innerHTML +=
+          '<div class="card">' +
+            '<h2>' + model.name + '</h2>' +
+            '<div class="status ' + statusClass + '">' + statusText + '</div>' +
+            '<div class="details">Prob. max: ' + probText + '<br>' + hoursInfo + '</div>' +
+          '</div>';
       });
 
-      const verdictBox = document.getElementById('verdictBox');
+      var verdictBox = document.getElementById('verdictBox');
       if (wetModelsCount === 0) {
         verdictBox.className = 'verdict dry';
         verdictBox.textContent = 'VERDETTO OGGI: Asciutto su tutti e 4 i modelli (0/4).';
       } else if (wetModelsCount <= 2) {
         verdictBox.className = 'verdict warn';
-        verdictBox.textContent = VERDETTO OGGI: Incerto — ${wetModelsCount} modelli su 4 prevedono ${snowDetected ? 'neve/pioggia' : 'pioggia'}.;
+        verdictBox.textContent = 'VERDETTO OGGI: Incerto - ' + wetModelsCount + ' modelli su 4 prevedono ' + (snowDetected ? 'neve/pioggia' : 'pioggia') + '.';
       } else {
         verdictBox.className = 'verdict wet';
-        verdictBox.textContent = VERDETTO OGGI: ${snowDetected ? 'Neve/Pioggia' : 'Pioggia'} confermata (${wetModelsCount}/4 modelli).;
+        verdictBox.textContent = 'VERDETTO OGGI: ' + (snowDetected ? 'Neve/Pioggia' : 'Pioggia') + ' confermata (' + wetModelsCount + '/4 modelli).';
       }
 
-      const tbody = document.getElementById('hourlyBody');
+      var tbody = document.getElementById('hourlyBody');
       tbody.innerHTML = '';
-      for (let i = 0; i < 24; i++) {
-        const rowClass = i < currentHour ? 'past' : (i === currentHour ? 'now' : '');
-        let cells = <td>${String(i).padStart(2, '0')}:00</td>;
+      for (var i = 0; i < 24; i++) {
+        var rowClass = i < currentHour ? 'past' : (i === currentHour ? 'now' : '');
+        var cells = '<td>' + padZero(i) + ':00</td>';
 
-        MODELS.forEach(model => {
-          const p = (data.hourly[precipitation_${model.id}] || [])[i] || 0;
-          const s = (data.hourly[snowfall_${model.id}] || [])[i] || 0;
-          if (s >= 0.1) {
-            cells += <td><span class="pill-snow">❄️ ${s.toFixed(1)}cm</span></td>;
-          } else if (p >= 0.1) {
-            cells += <td><span class="pill-wet">💧 ${p.toFixed(1)}mm</span></td>;
-          } else {
-            cells += <td>—</td>;
-          }
-        });
-
-        tbody.innerHTML += <tr class="${rowClass}">${cells}</tr>;
-      }
-    }
-
-    fetchWeather();
-  </script>
-</body>
-</html>
+        MODELS.forEach(function(model) {
+          var p = (data.hourly['precipitation_' + model.id] || [])[i] || 0;
+          var s = (data.hourly['snowfall_' + model.id] || [])[i] || 0
