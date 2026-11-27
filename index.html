@@ -17,7 +17,7 @@
       --border: #334155;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-    body { background: var(--bg); color: var(--text); padding: 16px; max-width: 850px; margin: 0 auto; }
+    body { background: var(--bg); color: var(--text); padding: 16px; max-width: 880px; margin: 0 auto; }
     header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
     .title-area { flex: 1; min-width: 220px; }
     h1 { font-size: 1.25rem; margin-bottom: 2px; }
@@ -43,12 +43,12 @@
     button:disabled { opacity: 0.6; cursor: wait; }
     .verdict {
       padding: 16px; border-radius: 12px; margin-bottom: 16px;
-      font-weight: 700; font-size: 1.05rem; border: 1px solid var(--border);
+      font-weight: 700; font-size: 1.02rem; border: 1px solid var(--border); line-height: 1.4;
     }
     .verdict.dry { background: rgba(16, 185, 129, 0.15); border-color: var(--dry); color: #6ee7b7; }
     .verdict.warn { background: rgba(245, 158, 11, 0.15); border-color: var(--warn); color: #fcd34d; }
     .verdict.wet { background: rgba(59, 130, 246, 0.2); border-color: var(--wet); color: #93c5fd; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 12px; margin-bottom: 20px; }
     .card {
       background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
     }
@@ -57,8 +57,8 @@
     .status.dry { color: var(--dry); }
     .status.wet { color: #60a5fa; }
     .status.snow { color: var(--snow); }
-    .details { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
-    .wind-highlight { color: #cbd5e1; font-weight: 600; }
+    .details { font-size: 0.8rem; color: var(--muted); line-height: 1.55; }
+    .highlight-info { color: #cbd5e1; font-weight: 600; }
     table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 10px; overflow: hidden; font-size: 0.82rem; }
     th, td { padding: 8px 6px; text-align: center; border-bottom: 1px solid var(--border); }
     th { background: #0b1120; color: var(--muted); font-weight: 600; }
@@ -66,7 +66,9 @@
     tr.now { background: rgba(37, 99, 235, 0.2); font-weight: 700; }
     .pill-wet { display: inline-block; background: rgba(59, 130, 246, 0.25); color: #93c5fd; padding: 2px 5px; border-radius: 4px; font-weight: 600; margin-bottom: 2px; }
     .pill-snow { display: inline-block; background: rgba(226, 232, 240, 0.25); color: #fff; padding: 2px 5px; border-radius: 4px; font-weight: 600; margin-bottom: 2px; }
-    .wind-cell { display: block; font-size: 0.75rem; color: var(--muted); }
+    .sub-cell { display: block; font-size: 0.75rem; color: var(--muted); line-height: 1.3; }
+    .temp-val { color: #e2e8f0; font-weight: 600; }
+    .temp-cold { color: #38bdf8; font-weight: 700; }
     .wind-strong { color: #fbbf24; font-weight: 600; }
   </style>
 </head>
@@ -175,7 +177,7 @@
         }
 
         var modelIds = MODELS.map(function(m) { return m.id; }).join(',');
-        var weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + currentLoc.lat + '&longitude=' + currentLoc.lon + '&hourly=precipitation,rain,snowfall,precipitation_probability,wind_speed_10m,wind_gusts_10m&models=' + modelIds + '&forecast_days=2&timezone=Europe%2FRome';
+        var weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + currentLoc.lat + '&longitude=' + currentLoc.lon + '&hourly=temperature_2m,precipitation,rain,snowfall,precipitation_probability,wind_speed_10m,wind_gusts_10m&models=' + modelIds + '&forecast_days=2&timezone=Europe%2FRome';
 
         var res = await fetch(weatherUrl);
         if (!res.ok) throw new Error('Errore risposta API meteo (' + res.status + ')');
@@ -208,10 +210,14 @@
       var wetModelsCount = 0;
       var snowDetected = false;
       var maxWindOverall = 0;
+      var minTempOverall = 999;
+      var maxTempOverall = -999;
+
       var grid = document.getElementById('modelsGrid');
       grid.innerHTML = '';
 
       MODELS.forEach(function(model) {
+        var temps = data.hourly['temperature_2m_' + model.id] || [];
         var precip = data.hourly['precipitation_' + model.id] || [];
         var snow = data.hourly['snowfall_' + model.id] || [];
         var prob = data.hourly['precipitation_probability_' + model.id] || [];
@@ -223,15 +229,23 @@
         var maxProb = 0;
         var maxWind = 0;
         var maxGust = 0;
+        var minTemp = 999;
+        var maxTemp = -999;
         var wetHours = [];
 
         for (var i = startIdx; i < endIdx; i++) {
           var hourOfDay = i - startIdx;
+          var t = temps[i];
           var p = precip[i] || 0;
           var s = snow[i] || 0;
           var pr = prob[i] || 0;
           var w = wind[i] || 0;
           var g = gusts[i] || 0;
+
+          if (typeof t === 'number') {
+            if (t < minTemp) minTemp = t;
+            if (t > maxTemp) maxTemp = t;
+          }
 
           totalMm += p;
           totalSnowCm += s;
@@ -244,6 +258,8 @@
         }
 
         if (maxWind > maxWindOverall) maxWindOverall = maxWind;
+        if (minTemp < minTempOverall) minTempOverall = minTemp;
+        if (maxTemp > maxTempOverall) maxTempOverall = maxTemp;
 
         var hasSnow = totalSnowCm >= 0.1;
         var hasRain = totalMm >= 0.1;
@@ -265,6 +281,9 @@
           : 'Nessuna precipitazione';
 
         var probText = maxProb > 0 ? maxProb + '%' : 'N/D';
+        var tempText = (minTemp < 999 && maxTemp > -999)
+          ? Math.round(minTemp) + '°C / ' + Math.round(maxTemp) + '°C'
+          : 'N/D';
         var windText = Math.round(maxWind) + ' km/h' + (maxGust > 0 ? ' (raffiche ' + Math.round(maxGust) + ')' : '');
 
         grid.innerHTML +=
@@ -272,26 +291,28 @@
             '<h2>' + model.name + '</h2>' +
             '<div class="status ' + statusClass + '">' + statusText + '</div>' +
             '<div class="details">' +
+              '<span class="highlight-info">Temp: ' + tempText + '</span><br>' +
               'Prob. max: ' + probText + '<br>' +
               hoursInfo + '<br>' +
-              '<span class="wind-highlight">Vento max: ' + windText + '</span>' +
+              '<span class="highlight-info">Vento max: ' + windText + '</span>' +
             '</div>' +
           '</div>';
       });
 
       var verdictBox = document.getElementById('verdictBox');
       var verdictPrefix = 'VERDETTO ' + dayLabel.toUpperCase() + ': ';
+      var tempSummary = (minTempOverall < 999) ? ' | Temp: ' + Math.round(minTempOverall) + '°/' + Math.round(maxTempOverall) + '°C' : '';
       var windSummary = ' | Vento max: ~' + Math.round(maxWindOverall) + ' km/h';
 
       if (wetModelsCount === 0) {
         verdictBox.className = 'verdict dry';
-        verdictBox.textContent = verdictPrefix + 'Asciutto su tutti e 4 i modelli (0/4)' + windSummary;
+        verdictBox.textContent = verdictPrefix + 'Asciutto su tutti e 4 i modelli (0/4)' + tempSummary + windSummary;
       } else if (wetModelsCount <= 2) {
         verdictBox.className = 'verdict warn';
-        verdictBox.textContent = verdictPrefix + 'Incerto - ' + wetModelsCount + '/4 modelli prevedono ' + (snowDetected ? 'neve/pioggia' : 'pioggia') + windSummary;
+        verdictBox.textContent = verdictPrefix + 'Incerto - ' + wetModelsCount + '/4 modelli prevedono ' + (snowDetected ? 'neve/pioggia' : 'pioggia') + tempSummary + windSummary;
       } else {
         verdictBox.className = 'verdict wet';
-        verdictBox.textContent = verdictPrefix + (snowDetected ? 'Neve/Pioggia' : 'Pioggia') + ' confermata (' + wetModelsCount + '/4 modelli)' + windSummary;
+        verdictBox.textContent = verdictPrefix + (snowDetected ? 'Neve/Pioggia' : 'Pioggia') + ' confermata (' + wetModelsCount + '/4 modelli)' + tempSummary + windSummary;
       }
 
       var tbody = document.getElementById('hourlyBody');
@@ -305,6 +326,7 @@
         var cells = '<td>' + padZero(hourOfDay) + ':00</td>';
 
         MODELS.forEach(function(model) {
+          var t = (data.hourly['temperature_2m_' + model.id] || [])[i];
           var p = (data.hourly['precipitation_' + model.id] || [])[i] || 0;
           var s = (data.hourly['snowfall_' + model.id] || [])[i] || 0;
           var w = (data.hourly['wind_speed_10m_' + model.id] || [])[i] || 0;
@@ -318,10 +340,13 @@
             precipHtml = 'Asciutto';
           }
 
-          var windClass = w >= 30 ? 'wind-cell wind-strong' : 'wind-cell';
-          var windHtml = '<span class="' + windClass + '">' + Math.round(w) + ' km/h</span>';
+          var tempStr = typeof t === 'number' ? Math.round(t) + '°C' : '-';
+          var tempClass = (typeof t === 'number' && t <= 2) ? 'temp-cold' : 'temp-val';
+          var windClass = w >= 30 ? 'wind-strong' : '';
 
-          cells += '<td>' + precipHtml + windHtml + '</td>';
+          var metaHtml = '<span class="sub-cell"><span class="' + tempClass + '">' + tempStr + '</span> · <span class="' + windClass + '">' + Math.round(w) + ' km/h</span></span>';
+
+          cells += '<td>' + precipHtml + metaHtml + '</td>';
         });
 
         tbody.innerHTML += '<tr class="' + rowClass + '">' + cells + '</tr>';
